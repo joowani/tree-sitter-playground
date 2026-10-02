@@ -1,0 +1,66 @@
+[package]
+name = "tree-sitter-playground"
+description = "Web playground for exploring Tree-sitter syntax trees"
+version = "0.1.0"
+authors = ["Joohwan Oh <joohwan.oh@outlook.com>"]
+license = "MIT"
+readme = "README.md"
+keywords = ["tree-sitter", "ast", "parser", "playground", "web"]
+categories = ["development-tools", "parser-implementations", "command-line-utilities"]
+homepage = "https://github.com/joowani/tree-sitter-playground"
+repository = "https://github.com/joowani/tree-sitter-playground"
+edition = "2024"
+rust-version = "1.90"
+
+include = [
+  "/src",
+  "/tests",
+  "/web",
+  "/LICENSE",
+  "/README.md",
+]
+
+[dependencies]
+anyhow = "1.0.104"
+arborium-thrift = "2.18.2"
+axum = "0.8.9"
+clap = { version = "4.6.7", features = ["derive"] }
+serde = { version = "1.0.229", features = ["derive"] }
+thiserror = "2.0.21"
+tokio = { version = "1.53.1", features = ["macros", "net", "rt-multi-thread", "signal"] }
+tree-sitter = "0.27.0"
+tree-sitter-c = "0.24.2"
+tree-sitter-c-sharp = "0.23.5"
+tree-sitter-cpp = "0.23.4"
+tree-sitter-go = "0.25.0"
+tree-sitter-graphql = "0.3.0"
+tree-sitter-hcl = "1.1.0"
+tree-sitter-java = "0.23.5"
+tree-sitter-json = "0.24.8"
+tree-sitter-kt = "0.1.0"
+tree-sitter-php = "0.24.2"
+tree-sitter-prisma-io = "1.6.0"
+tree-sitter-proto = "0.6.0"
+tree-sitter-python = "0.25.0"
+tree-sitter-ruby = "0.23.1"
+tree-sitter-rust = "0.24.2"
+tree-sitter-sequel = "0.3.11"
+tree-sitter-swift = "0.7.3"
+tree-sitter-toml-ng = "0.7.0"
+tree-sitter-typescript = "0.23.2"
+tree-sitter-yaml = "0.7.2"
+
+[dev-dependencies]
+serde_json = "1.0.151"
+
+# Keep normal development artifacts small while preserving useful backtraces.
+# Use `--profile debugging` when full debugger symbols are needed.
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+debug = false
+
+[profile.debugging]
+inherits = "dev"
+debug = true

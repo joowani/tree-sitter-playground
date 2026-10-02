@@ -1,0 +1,52 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+cd "${BASH_SOURCE[0]%/*}/.."
+
+# `--check` validates the version and stops, so the release workflow can reject bad input before requesting a token.
+check_only=false
+if [[ ${1:-} == --check ]]; then
+    check_only=true
+    shift
+fi
+
+version="${1:?usage: scripts/publish [--check] <version>}"
+
+# Require a bare `x.y.z`, so neither a tag-shaped `v1.2.3` nor a pre-release suffix reaches `cargo publish`.
+if [[ ! $version =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+    echo "version $version is not a bare x.y.z number" >&2
+    exit 1
+fi
+
+crate_version="$(sed -n 's/^version = "\([^"]*\)"/\1/p' Cargo.toml | head -n 1)"
+if [[ $version != "$crate_version" ]]; then
+    echo "requested version $version does not match the crate version $crate_version" >&2
+    exit 1
+fi
+
+if [[ $check_only == true ]]; then
+    exit 0
+fi
+
+user_agent="tree-sitter-playground release workflow (https://github.com/joowani/tree-sitter-playground)"
+
+# Read the status code, since `curl --fail` cannot distinguish a network failure from a missing crate version.
+status="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' \
+    --user-agent "$user_agent" "https://crates.io/api/v1/crates/tree-sitter-playground/$version")" || {
+    echo "crates.io could not be reached while checking tree-sitter-playground $version" >&2
+    exit 1
+}
+
+case "$status" in
+    200)
+        echo "tree-sitter-playground $version is already published; nothing to do"
+        ;;
+    404)
+        cargo publish --locked
+        ;;
+    *)
+        echo "crates.io answered $status while checking tree-sitter-playground $version" >&2
+        exit 1
+        ;;
+esac

@@ -1,0 +1,449 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tree-sitter Playground</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/monaco-editor@0.57.0/min/vs/editor/editor.main.css">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  :root {
+    --background: #1e1e1e;
+    --panel: #252526;
+    --panel-header: #2d2d2d;
+    --border: #3c3c3c;
+    --text: #d4d4d4;
+    --muted: #8b8b8b;
+    --accent: #3794ff;
+    --error: #f48771;
+    --mono: 'Cascadia Code', 'Fira Code', 'JetBrains Mono', Menlo, Consolas, monospace;
+  }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: var(--background);
+    color: var(--text);
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  body.resizing { cursor: col-resize; user-select: none; }
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 16px;
+    background: var(--panel);
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  header h1 { font-size: 14px; font-weight: 600; color: #cccccc; }
+  header a { color: var(--muted); font-size: 12px; text-decoration: none; }
+  header a:hover { color: var(--text); }
+  .main { display: flex; flex: 1; min-height: 0; }
+  .panel { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+  .panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 0 12px;
+    height: 32px;
+    background: var(--panel-header);
+    border-bottom: 1px solid var(--border);
+    font-size: 11px;
+    color: var(--muted);
+    flex-shrink: 0;
+    white-space: nowrap;
+  }
+  .panel-header .title { text-transform: uppercase; letter-spacing: 1px; }
+  .panel-header label { display: flex; align-items: center; gap: 8px; text-transform: uppercase; letter-spacing: 1px; }
+  .header-group { display: flex; align-items: center; gap: 10px; min-width: 0; overflow: hidden; }
+  select, button {
+    background: #3c3c3c;
+    color: var(--text);
+    border: 1px solid #555;
+    border-radius: 4px;
+    padding: 2px 8px;
+    font-size: 11px;
+    font-family: inherit;
+    cursor: pointer;
+  }
+  select:focus-visible, button:focus-visible { outline: 1px solid var(--accent); outline-offset: 1px; }
+  button:hover:not(:disabled) { border-color: #777; }
+  button:disabled, select:disabled { opacity: 0.5; cursor: default; }
+  #ast-status { overflow: hidden; text-overflow: ellipsis; }
+  #ast-status .has-errors { color: var(--error); }
+  .panel-body { flex: 1; min-height: 0; position: relative; }
+  .divider {
+    width: 4px;
+    background: var(--border);
+    cursor: col-resize;
+    flex-shrink: 0;
+    touch-action: none;
+    transition: background 0.15s;
+  }
+  .divider:hover, body.resizing .divider { background: var(--accent); }
+  #editor { width: 100%; height: 100%; }
+  #ast-output {
+    width: 100%;
+    height: 100%;
+    overflow: auto;
+    padding: 8px 12px;
+    font-family: var(--mono);
+    font-size: 13px;
+    line-height: 1.5;
+    white-space: pre;
+  }
+  #ast-output .field { color: #9cdcfe; }
+  #ast-output .kind { color: #569cd6; }
+  #ast-output .kind.error { color: var(--error); font-weight: bold; }
+  #ast-output .position { color: var(--muted); }
+  .ast-line { cursor: pointer; border-radius: 2px; padding: 0 4px; margin: 0 -4px; }
+  .ast-line:hover { background: rgba(255, 255, 255, 0.06); }
+  .ast-line.heat-0 { background: rgba(55, 148, 255, 0.35); }
+  .ast-line.heat-1 { background: rgba(55, 148, 255, 0.20); }
+  .ast-line.heat-2 { background: rgba(55, 148, 255, 0.10); }
+  .placeholder { color: var(--muted); font-style: italic; font-family: inherit; white-space: normal; padding: 12px 0; }
+  .error-message {
+    color: var(--error);
+    background: #2d1515;
+    border-radius: 4px;
+    padding: 12px 16px;
+    font-family: inherit;
+    white-space: pre-wrap;
+  }
+  .code-highlight { background: rgba(55, 148, 255, 0.22); outline: 1px solid rgba(55, 148, 255, 0.55); }
+</style>
+</head>
+<body>
+<header>
+  <h1>Tree-sitter Playground</h1>
+  <a href="https://github.com/joowani/tree-sitter-playground" target="_blank" rel="noopener noreferrer">GitHub</a>
+</header>
+<main class="main">
+  <section class="panel" id="code-panel">
+    <div class="panel-header">
+      <label>Language
+        <!-- Disabled until the editor loads; autocomplete="off" stops Firefox from re-enabling it on reload. -->
+        <select id="language-select" autocomplete="off" disabled>
+          <option value="auto">Auto-detect</option>
+        </select>
+      </label>
+      <span id="detected-language"></span>
+    </div>
+    <div class="panel-body"><div id="editor"></div></div>
+  </section>
+  <div class="divider" id="divider" role="separator" aria-orientation="vertical" aria-label="Resize panels"></div>
+  <section class="panel" id="ast-panel">
+    <div class="panel-header">
+      <span class="title">AST</span>
+      <span class="header-group">
+        <span id="ast-status" aria-live="polite"></span>
+        <button id="copy-button" type="button" disabled>Copy</button>
+      </span>
+    </div>
+    <div class="panel-body"><div id="ast-output"></div></div>
+  </section>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.57.0/min/vs/loader.js"></script>
+<script>
+(() => {
+  'use strict';
+
+  const MONACO_BASE_URL = 'https://cdn.jsdelivr.net/npm/monaco-editor@0.57.0/min/vs';
+  const STORAGE_KEY = 'tree-sitter-playground';
+  const DEFAULT_STATE = {
+    language: 'auto',
+    code: 'def greet(name: str) -> str:\n    return f"Hello, {name}!"\n',
+  };
+  // Monaco language IDs by playground language. Languages Monaco lacks are shown as plain text.
+  const MONACO_LANGUAGES = {
+    c: 'c', cpp: 'cpp', csharp: 'csharp', go: 'go', graphql: 'graphql', hcl: 'hcl', java: 'java',
+    javascript: 'javascript', json: 'json', jsx: 'javascript', kotlin: 'kotlin', php: 'php', protobuf: 'protobuf',
+    python: 'python', ruby: 'ruby', rust: 'rust', sql: 'sql', swift: 'swift', terraform: 'hcl', toml: 'ini',
+    tsx: 'typescript', typescript: 'typescript', yaml: 'yaml',
+  };
+  const PARSE_DELAY_MS = 250;
+  const HEAT_LEVELS = 3;
+
+  const languageSelect = document.getElementById('language-select');
+  const detectedLanguage = document.getElementById('detected-language');
+  const astOutput = document.getElementById('ast-output');
+  const astStatus = document.getElementById('ast-status');
+  const copyButton = document.getElementById('copy-button');
+  const divider = document.getElementById('divider');
+  const codePanel = document.getElementById('code-panel');
+
+  let editor = null;
+  let decorations = null;
+  // Nodes of the rendered AST in document order, each with its line `element` and `parent` node.
+  let nodes = [];
+  let astText = '';
+  let highlightedElements = [];
+  let requestController = null;
+  let parseTimer = 0;
+  let isAstStale = true;
+  let isSelectingFromAst = false;
+
+  function loadState() {
+    try {
+      return { ...DEFAULT_STATE, ...JSON.parse(localStorage.getItem(STORAGE_KEY)) };
+    } catch {
+      return DEFAULT_STATE;
+    }
+  }
+
+  function saveState() {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ language: languageSelect.value, code: editor.getValue() }));
+    } catch {
+      // Storage can be unavailable, such as in private browsing; the playground still works without it.
+    }
+  }
+
+  function span(className, text) {
+    const element = document.createElement('span');
+    element.className = className;
+    element.textContent = text;
+    return element;
+  }
+
+  function showInAst(className, text) {
+    const element = document.createElement('div');
+    element.className = className;
+    element.textContent = text;
+    astOutput.replaceChildren(element);
+    nodes = [];
+    astText = '';
+    copyButton.disabled = true;
+    astStatus.textContent = '';
+    detectedLanguage.textContent = '';
+    clearHighlight();
+  }
+
+  function scheduleParse() {
+    isAstStale = true;
+    // A response for the previous code would mark the AST current, so drop it; the scheduled parse replaces it.
+    requestController?.abort();
+    requestController = null;
+    clearTimeout(parseTimer);
+    parseTimer = setTimeout(parse, PARSE_DELAY_MS);
+  }
+
+  async function parse() {
+    clearTimeout(parseTimer);
+    requestController?.abort();
+    requestController = null;
+    saveState();
+
+    const code = editor.getValue();
+    if (!code.trim()) {
+      showInAst('placeholder', 'Type or paste code to see its AST.');
+      return;
+    }
+
+    const controller = new AbortController();
+    requestController = controller;
+    const language = languageSelect.value;
+    try {
+      const response = await fetch('/api/ast', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ language, code }),
+        signal: controller.signal,
+      });
+      const body = await response.text();
+      if (controller !== requestController) return;
+      let data = null;
+      try {
+        data = JSON.parse(body);
+      } catch {
+        // Errors raised outside the AST handler, such as an unknown route, are plain text.
+      }
+      if (!response.ok || !data) {
+        showInAst('error-message', data?.error ?? `${response.status} ${response.statusText}: ${body}`);
+        return;
+      }
+      render(data, language);
+    } catch (error) {
+      if (error.name !== 'AbortError') {
+        showInAst('error-message', `Could not reach the playground server: ${error.message}`);
+      }
+    }
+  }
+
+  function render(data, requestedLanguage) {
+    detectedLanguage.textContent = requestedLanguage === 'auto' ? `detected: ${data.language}` : '';
+    monaco.editor.setModelLanguage(editor.getModel(), MONACO_LANGUAGES[data.language] ?? 'plaintext');
+
+    const fragment = document.createDocumentFragment();
+    const ancestors = [];
+    nodes = data.nodes.map((node, index) => {
+      ancestors.length = node.depth;
+      const element = document.createElement('div');
+      element.className = 'ast-line';
+      element.dataset.index = index;
+      element.append('  '.repeat(node.depth));
+      if (node.field) element.append(span('field', node.field), ': ');
+      const [startRow, startColumn] = node.start;
+      const [endRow, endColumn] = node.end;
+      element.append(
+        span(node.isError ? 'kind error' : 'kind', node.label),
+        ' ',
+        span('position', `(${startRow}-${startColumn}) - (${endRow}-${endColumn})`),
+      );
+      fragment.append(element);
+      const entry = { ...node, element, parent: ancestors[node.depth - 1] ?? null };
+      ancestors.push(entry);
+      return entry;
+    });
+    astOutput.replaceChildren(fragment);
+    astText = data.ast;
+    copyButton.disabled = false;
+
+    const errorText = `${data.errorCount} ${data.errorCount === 1 ? 'error' : 'errors'}`;
+    astStatus.replaceChildren(
+      `${nodes.length} ${nodes.length === 1 ? 'node' : 'nodes'} · `,
+      data.errorCount ? span('has-errors', errorText) : errorText,
+      ` · ${data.parseMillis.toFixed(1)} ms`,
+    );
+
+    isAstStale = false;
+    highlightEditorSelection(false);
+  }
+
+  function clearHighlight() {
+    for (const element of highlightedElements) element.classList.remove('heat-0', 'heat-1', 'heat-2');
+    highlightedElements = [];
+    decorations?.clear();
+  }
+
+  // Marks `node` and its nearest ancestors in the AST, and optionally its range in the editor.
+  function highlight(node, { isEditorRangeShown, isScrolled }) {
+    clearHighlight();
+    if (!node) return;
+    let current = node;
+    for (let level = 0; level < HEAT_LEVELS && current; level++, current = current.parent) {
+      current.element.classList.add(`heat-${level}`);
+      highlightedElements.push(current.element);
+    }
+    if (isEditorRangeShown) {
+      decorations.set([{ range: rangeOf(node), options: { className: 'code-highlight' } }]);
+    }
+    if (isScrolled) node.element.scrollIntoView({ block: 'nearest' });
+  }
+
+  function rangeOf(node) {
+    const model = editor.getModel();
+    return monaco.Range.fromPositions(model.getPositionAt(node.from), model.getPositionAt(node.to));
+  }
+
+  // Highlights the deepest node that contains the editor's selection or cursor.
+  function highlightEditorSelection(isScrolled) {
+    if (isSelectingFromAst || isAstStale || !nodes.length) return;
+    const model = editor.getModel();
+    const selection = editor.getSelection();
+    const from = model.getOffsetAt(selection.getStartPosition());
+    const to = model.getOffsetAt(selection.getEndPosition());
+    // Nodes are in document order, so the last node that contains the selection is the deepest.
+    let deepest = null;
+    for (const node of nodes) {
+      if (node.from <= from && to <= node.to) deepest = node;
+    }
+    highlight(deepest, { isEditorRangeShown: !selection.isEmpty(), isScrolled });
+  }
+
+  astOutput.addEventListener('click', (event) => {
+    const element = event.target.closest('.ast-line');
+    if (!element || isAstStale) return;
+    const node = nodes[Number(element.dataset.index)];
+    const range = rangeOf(node);
+    isSelectingFromAst = true;
+    editor.setSelection(range);
+    editor.revealRangeInCenterIfOutsideViewport(range);
+    isSelectingFromAst = false;
+    highlight(node, { isEditorRangeShown: false, isScrolled: false });
+    editor.focus();
+  });
+
+  copyButton.addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText(astText);
+      copyButton.textContent = 'Copied';
+    } catch {
+      copyButton.textContent = 'Copy failed';
+    }
+    setTimeout(() => { copyButton.textContent = 'Copy'; }, 1500);
+  });
+
+  languageSelect.addEventListener('change', () => {
+    isAstStale = true;
+    parse();
+  });
+
+  // Edits are saved when they are parsed, after the parse delay, so save the latest ones when the page is closed or
+  // reloaded before then.
+  window.addEventListener('pagehide', () => {
+    if (editor) saveState();
+  });
+
+  divider.addEventListener('pointerdown', (event) => {
+    divider.setPointerCapture(event.pointerId);
+    document.body.classList.add('resizing');
+  });
+  divider.addEventListener('pointermove', (event) => {
+    if (!divider.hasPointerCapture(event.pointerId)) return;
+    const bounds = codePanel.parentElement.getBoundingClientRect();
+    const percent = ((event.clientX - bounds.left) / bounds.width) * 100;
+    codePanel.style.flex = `0 0 ${Math.min(80, Math.max(20, percent))}%`;
+  });
+  divider.addEventListener('lostpointercapture', () => document.body.classList.remove('resizing'));
+
+  const languagesLoaded = fetch('/api/languages')
+    .then((response) => (response.ok ? response.json() : []))
+    .then((languages) => {
+      for (const language of languages) languageSelect.add(new Option(language, language));
+    })
+    .catch(() => {});
+
+  require.config({ paths: { vs: MONACO_BASE_URL } });
+  require(['vs/editor/editor.main'], async () => {
+    await languagesLoaded;
+    const state = loadState();
+    const hasLanguage = [...languageSelect.options].some((option) => option.value === state.language);
+    languageSelect.value = hasLanguage ? state.language : 'auto';
+
+    // Tree-sitter's errors are the ones that matter here, so turn off Monaco's own validation, which would also flag
+    // valid code, such as JSX in TSX, imports it cannot resolve, and comments in JSON.
+    const diagnosticsOff = { noSemanticValidation: true, noSyntaxValidation: true, noSuggestionDiagnostics: true };
+    monaco.typescript.typescriptDefaults.setDiagnosticsOptions(diagnosticsOff);
+    monaco.typescript.javascriptDefaults.setDiagnosticsOptions(diagnosticsOff);
+    monaco.json.jsonDefaults.setDiagnosticsOptions({ validate: false });
+
+    editor = monaco.editor.create(document.getElementById('editor'), {
+      value: state.code,
+      language: 'plaintext',
+      theme: 'vs-dark',
+      fontSize: 13,
+      fontFamily: getComputedStyle(document.documentElement).getPropertyValue('--mono'),
+      minimap: { enabled: false },
+      scrollBeyondLastLine: false,
+      automaticLayout: true,
+      padding: { top: 8, bottom: 8 },
+    });
+    decorations = editor.createDecorationsCollection();
+    editor.onDidChangeModelContent(scheduleParse);
+    editor.onDidChangeCursorSelection(() => highlightEditorSelection(true));
+    languageSelect.disabled = false;
+    editor.focus();
+    parse();
+  }, (error) => {
+    showInAst('error-message', `Could not load the code editor from ${MONACO_BASE_URL}: ${error.message}`);
+  });
+})();
+</script>
+</body>
+</html>
